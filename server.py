@@ -259,13 +259,7 @@ def prepare_app(app):
     user2 = User(username='waiter', password="waiter")
 
     client1 = Client(user1, 'http://localhost:65010/callback')
-
     client2 = Client(user2, 'http://localhost:65010/callback')
-
-
-   # access_token = Token(
-   #     user_id=1, client_id='dev', access_token='expired', expires_in=0
-   # )
 
     try:
         db.session.add(user1)
@@ -298,14 +292,8 @@ def create_server(app, oauth=None):
         user = User.query.get(1)
         g.user = user
 
-    @app.route('/me')
-    @oauth.require_oauth('email')
-    def home():
-        cur_user = request.oauth.user
-        return jsonify(name=cur_user.username, data="hello")
 
-
-    @app.route('/rooms/<room_name>/users', methods=['GET', 'POST'])
+    @app.route('/rooms/<room_name>/users', methods=['GET', 'POST', 'DELETE'])
     @oauth.require_oauth('email')
     def users_resource(room_name):
         room = Room.query.filter_by(name=room_name).first_or_404()
@@ -369,7 +357,7 @@ def create_server(app, oauth=None):
             else:
                 return jsonify(result="Message sending error")
 
-    @app.route('/rooms', methods=['GET', 'POST'])
+    @app.route('/rooms', methods=['GET', 'POST', 'DELETE'])
     @oauth.require_oauth('email')
     def rooms_resource():
         rooms = Room.query.all()
@@ -464,17 +452,6 @@ def create_server(app, oauth=None):
         oauth = request.oauth
         return jsonify(client=oauth.client.name)
 
-    @app.route('/api/address/<city>')
-    @oauth.require_oauth('address')
-    def address_api(city):
-        oauth = request.oauth
-        return jsonify(address=city, username=oauth.user.username)
-
-    @app.route('/api/method', methods=['GET', 'POST', 'PUT', 'DELETE'])
-    @oauth.require_oauth()
-    def method_api():
-        return jsonify(method=request.method)
-
     @oauth.invalid_response
     def require_oauth_invalid(req):
         return jsonify(message=req.error_message), 401
@@ -486,8 +463,6 @@ if __name__ == '__main__':
     from flask import Flask
     app = Flask(__name__, template_folder='templates')
     app.debug = True
-
-
 
     app.secret_key = 'development'
     app.config.update({
