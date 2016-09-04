@@ -6,18 +6,17 @@ import requests
 import requests.auth
 from urllib.parse import urlencode as urlencode
 
-CLIENT_ID = "dev" # Fill this in with your client ID
-CLIENT_SECRET = "dev" # Fill this in with your client secret
+CLIENT_ID = "" # Fill this in with your client ID
+CLIENT_SECRET = "" # Fill this in with your client secret
 REDIRECT_URI = "http://localhost:65010/callback"
 
-USERNAME = "admin"
-PASSWORD = "admin"
+USERNAME = "user"
+PASSWORD = "user"
 
 def base_headers(access_token=None):
     if access_token is not None:
         return {"Authorization": "bearer " + access_token}
     return {}
-    #return {"User-Agent": user_agent()}
 
 app = Flask(__name__)
 @app.route('/')
@@ -64,20 +63,21 @@ def auth_callback():
     token = get_token(code)
     access_token = token["access_token"]
 
-    send_message(access_token, "global", "Here I am")
-    send_message(access_token, "global", "second attempt")
+    headers = base_headers(access_token)
+    response = requests.get("http://127.0.0.1:5000/me", headers=headers)
+    print(response.text)
 
+    send_message(access_token, "global", "Here I am")
+    #send_message(access_token, "global", "second attempt")
 
     create_room(access_token, "local")
-    add_human(access_token, "local", "waiter")
+    add_human(access_token, "local", "admin")
     send_message(access_token, "local", "Api Test")
     send_message(access_token, "local", "Second attempt")
-    messages = get_messages(access_token, "local")
+    get_messages(access_token, "local")
 
-    headers = base_headers(access_token)
     response = requests.get("http://127.0.0.1:5000/rooms", headers=headers)
     return response.text
-    # return jsonify(signed_texts)
 
 def get_token(code):
     client_auth = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
@@ -105,6 +105,7 @@ def send_message(access_token, room_name, text):
 def get_messages(access_token, room_name):
     headers = base_headers(access_token)
     response = requests.get("http://127.0.0.1:5000/rooms/"+room_name+"/messages", headers=headers)
+
     print(response.json())
     return response.json()
 
@@ -143,10 +144,13 @@ def delete_human(access_token, room_name, username):
 
 
 if __name__ == '__main__':
-    resp = requests.post("http://127.0.0.1:5000/users", params=dict(username="admin", password="admin"))
+    resp = requests.post("http://127.0.0.1:5000/users", params=dict(username=USERNAME, password=PASSWORD))
     resp = resp.json()
 
     CLIENT_ID = resp["client_id"]
     CLIENT_SECRET = resp["client_secret"]
+
+    print(CLIENT_ID)
+    print(CLIENT_SECRET)
 
     app.run(debug=True, port=65010)

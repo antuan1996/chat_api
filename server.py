@@ -12,9 +12,8 @@ from werkzeug.security import gen_salt
 db = SQLAlchemy()
 
 users2rooms = db.Table('user_room',
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id')),
-    db.Column('room_id', db.Integer, db.ForeignKey('room.id'))
-)
+                        db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+                        db.Column('room_id', db.Integer, db.ForeignKey('room.id'), primary_key=True))
 
 
 class Message(db.Model):
@@ -40,10 +39,11 @@ class Room(db.Model):
     users = db.relationship('User', secondary=users2rooms,
                             backref=db.backref('rooms', lazy='dynamic'))
 
-    def __init__(self, room_name, creator: "User"):
+    def __init__(self, room_name: str, creator: "User"):
         self.name = room_name
         self.creator = creator
         self.users.append(creator)
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -67,25 +67,26 @@ class User(db.Model):
             return True
         return False
 
+
 class Client(db.Model):
     # id = db.Column(db.Integer, primary_key=True)
     # human readable name
     client_id = db.Column(db.String(40), primary_key=True)
     client_secret = db.Column(db.String(55), unique=True, index=True,
                               nullable=False)
-    client_type = db.Column(db.String(20), default='public')
+    client_type = db.Column(db.String(20), default='confidential')
     redirect_uri = db.Column(db.Text)
 
     default_scope = db.Column(db.Text, default='email address')
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     user = db.relationship('User', uselist=False,  backref=db.backref('client', uselist=False) )
 
-    def __init__(self, user:"User", redirect_uri):
+    def __init__(self, user: "User", redirect_uri: str):
         self.client_id = gen_salt(40)
         self.client_secret = gen_salt(50)
         self.user = user
         self.redirect_uri = redirect_uri
-        self.client_type = 'public'
+        self.client_type = 'confidential'
 
     @property
     def redirect_uris(self):
@@ -256,22 +257,19 @@ def prepare_app(app):
     db.create_all()
 
     user1 = User(username='admin', password="admin")
-    user2 = User(username='waiter', password="waiter")
+    #user2 = User(username='waiter', password="waiter")
 
     client1 = Client(user1, 'http://localhost:65010/callback')
-    client2 = Client(user2, 'http://localhost:65010/callback')
+    #client2 = Client(user2, 'http://localhost:65010/callback')
 
     try:
         db.session.add(user1)
-        db.session.add(user2)
+        #db.session.add(user2)
         db.session.add(client1)
-        db.session.add(client2)
-        #db.session.add(temp_grant)
-        #db.session.add(access_token)
+        #db.session.add(client2)
         global_room = Room("global", user1)
         db.session.add(global_room)
-        global_room.users.append(user1)
-        #global_room.users.append(user2)
+        #global_room.users.append(user1)
         db.session.commit()
         user1.write_to_room(global_room, "Hello, World!!!")
 
@@ -292,6 +290,11 @@ def create_server(app, oauth=None):
         user = User.query.get(1)
         g.user = user
 
+    @app.route('/me', methods=['GET'])
+    @oauth.require_oauth('email')
+    def about_me():
+        user = request.oauth.user
+        return jsonify(my_name=user.username)
 
     @app.route('/rooms/<room_name>/users', methods=['GET', 'POST', 'DELETE'])
     @oauth.require_oauth('email')
@@ -310,6 +313,7 @@ def create_server(app, oauth=None):
             return jsonify(names_roles)
 
         if request.method == 'POST':
+            print("Adding user")
             me = request.oauth.user
             if not me in room.users:
                 return jsonify({"result": "Error", "description": "Acces denided"})
@@ -348,7 +352,6 @@ def create_server(app, oauth=None):
             signed_texts = [dict(author=message.creator.username, text=message.text) for message in room.room_messages]
             resp = Response(response=json.dumps(signed_texts), status=200, mimetype="application/json")
             return resp
-            #return jsonify(signed_texts)
 
         if request.method == 'POST':
             user = request.oauth.user
@@ -393,14 +396,12 @@ def create_server(app, oauth=None):
             db.session.commit()
             return jsonify(result="Room deleted Successfully")
 
-
     @app.route('/users', methods=['GET', 'POST'])
     def clients_resource():
         if request.method == 'GET':
             names = [dict(name=user.username) for user in User.query.all()]
             resp = Response(response=json.dumps(names), status=200, mimetype="application/json")
             return resp
-            # return jsonify(signed_texts)
 
         if request.method == 'POST':
             username = request.args["username"]
@@ -428,6 +429,7 @@ def create_server(app, oauth=None):
         username = request.args["username"]
         password = request.args["password"]
         user = User.query.filter_by(username=username).first_or_404()
+        g.user = user
         return user.check_password(password)
 
     @app.route('/oauth/token', methods=['POST', 'GET'])
@@ -439,18 +441,6 @@ def create_server(app, oauth=None):
     @oauth.revoke_handler
     def revoke_token():
         pass
-
-    @app.route('/api/email')
-    @oauth.require_oauth('email')
-    def email_api():
-        oauth = request.oauth
-        return jsonify(email='me@oauth.net', username=oauth.user.username)
-
-    @app.route('/api/client')
-    @oauth.require_oauth()
-    def client_api():
-        oauth = request.oauth
-        return jsonify(client=oauth.client.name)
 
     @oauth.invalid_response
     def require_oauth_invalid(req):
